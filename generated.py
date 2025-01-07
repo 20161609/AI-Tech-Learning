@@ -34,7 +34,8 @@ for k in k_values:
 results_df = pd.DataFrame({'k': k_values, 'Accuracy': accuracies})
 
 # Display the results to the user
-import ace_tools as tools; tools.display_dataframe_to_user(name="KNN Accuracy Results", dataframe=results_df)
+import ace_tools as tools; 
+tools.display_dataframe_to_user(name="KNN Accuracy Results", dataframe=results_df)
 
 # Plot the accuracy as a function of k
 plt.figure(figsize=(8, 6))
