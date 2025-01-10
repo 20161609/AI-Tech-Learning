@@ -26,7 +26,7 @@ def extract_code_from_ipynb(file_path, output_file):
     print(f"Code extracted to {output_file}")
 
 # Define the input .ipynb file path and the output .py file path
-FILE_PATH = 'practice/KNN_Wine_Example_Practice.ipynb'  # Path to the Jupyter Notebook
+FILE_PATH = 'practice/SVM_Cancer_Example_Practice.ipynb'  # Path to the Jupyter Notebook
 OUTPUT_PATH = 'generated.py'  # Path for the generated Python file
 
 # Call the function to extract code
