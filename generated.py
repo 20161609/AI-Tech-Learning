@@ -1,92 +1,131 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.svm import SVC
-from sklearn.metrics import classification_report, accuracy_score
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
-from sklearn.metrics import confusion_matrix
-import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+from sklearn.preprocessing import LabelEncoder, RobustScaler
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import confusion_matrix
 
 SEED = 42
 
-data_link = "https://raw.githubusercontent.com/20161609/data_box/refs/heads/main/diabetes.csv"
-diabetes = pd.read_csv(data_link)
+data_url = 'https://raw.githubusercontent.com/20161609/data_box/refs/heads/main/penguins.csv'
+df = pd.read_csv(data_url)
+df.shape
 
-print("Dataset Shape:", diabetes.shape)
+df.head()
 
-diabetes.head()
+def clean_column_names(col):
+  # Change to lowercase and remove spaces and special characters ('_', '(', ')')
+  col = col.strip()
+  col = col.lower()
+  col = col.replace(' ', '_')
+  col = col.replace('(', '')
+  col = col.replace(')', '')
+  return col
 
-diabetes.describe().T
+df.columns = [clean_column_names(col) for col in df.columns]
+df.head()
 
-if diabetes.isnull().sum().any():
-    print("Missing values detected. Filling missing values with mean.")
-    diabetes.fillna(diabetes.mean(), inplace=True)
+df.info()
 
-initial_rows = diabetes.shape[0]
-diabetes.drop_duplicates(inplace=True)
-final_rows = diabetes.shape[0]
+# Handle missing values in numeric columns by filling with mean
+numeric_cols = df.select_dtypes(include=['number']).columns
+for col in numeric_cols:
+    if df[col].isnull().sum() > 0:
+        print(f"Filling missing values in numeric column '{col}' with mean.")
+        df[col].fillna(df[col].mean(), inplace=True)
+
+# Handle missing values in categorical columns by filling with mode
+categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+numerical_cols = df.select_dtypes(include=['number']).columns
+for col in categorical_cols:
+    if df[col].isnull().sum() > 0:
+        print(f"Filling missing values in categorical column '{col}' with mode.")
+        df[col].fillna(df[col].mode()[0], inplace=True)
+
+
+# Convert categorical columns to numerical using Label Encoding
+for col in categorical_cols:
+  print(f"Encoding categorical column '{col}'.")
+
+  le = LabelEncoder()
+  # Convert to string before encoding
+  df[col] = le.fit_transform(df[col].astype(str))
+
+print("Missing values after preprocessing:")
+print(df.isnull().sum())
+
+initial_rows = df.shape[0]
+df.drop_duplicates(inplace=True)
+final_rows = df.shape[0]
 print(f"Removed {initial_rows - final_rows} duplicate rows.")
 
-# Identify categorical columns and encode them using Label Encoding
-categorical_cols = diabetes.select_dtypes(include=['object', 'category']).columns
-print("Categorical columns:", categorical_cols)
+df.describe().T
 
-# Encoding
-for col in categorical_cols:
-    if diabetes[col].isnull().sum() > 0:
-        print(f"Filling missing values in '{col}' with mode.")
-        diabetes[col].fillna(diabetes[col].mode()[0], inplace=True)
+cols_num = df[numerical_cols]
+cols_num
 
-X = diabetes.iloc[:, :-1]  # features
-y = diabetes.iloc[:, -1]   # label
+cols_num.hist(figsize=(10, 8))
+plt.show()
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+axes = axes.flatten()
 
-# Use 80% for training and 20% for testing
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=SEED)
 
-svm_model = SVC(random_state=42)
-svm_model.fit(X_train, y_train)
+for i, col in enumerate(cols_num.columns):
+  sns.boxplot(y=col, data=cols_num, hue=df['species'], ax=axes[i])
+  axes[i].set_xlabel(None)
+  axes[i].set_ylabel(None)
+  axes[i].set_title(col)
 
-y_pred = svm_model.predict(X_test)
+# Separate features (X) and target (y)
+target_col = 'species'  # Assuming 'species' is the target column
+X = df.drop(columns=[target_col])
+y = df[target_col]
 
-# Define a function to print classification metrics and display a confusion matrix heatmap
-def print_metrics(y_true, y_pred):
-    print("Accuracy:", accuracy_score(y_true, y_pred))
-    print("Recall:", recall_score(y_true, y_pred))
-    print("Precision:", precision_score(y_true, y_pred))
-    print("F1 Score:", f1_score(y_true, y_pred))
 
-    # Plt show
-    cm = confusion_matrix(y_true, y_pred)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.xlabel('Predicted')
-    plt.ylabel('Actual')
-    plt.title('Confusion Matrix')
-    plt.show()
+# sns.heatmap(train.isna())
 
-print_metrics(y_test, y_pred)
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED)
 
-param_grid = {
-    'C': [0.1, 1, 10, 100],
-    'gamma': [1, 0.1, 0.01, 0.001],
-    'kernel': ['linear', 'rbf', 'poly']
-}
+X_train.shape, y_train.shape, X_test.shape, y_test.shape
 
-grid_search = GridSearchCV(SVC(random_state=42), param_grid, cv=5, scoring='accuracy')
-grid_search.fit(X_train, y_train)
+scaler = RobustScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-# Display the best hyperparameters
-print("Best Parameters:", grid_search.best_params_)
+# Train a Decision Tree model
+dt_model = DecisionTreeClassifier(random_state=SEED)
+dt_model.fit(X_train_scaled, y_train)
+y_pred_tree = dt_model.predict(X_test_scaled)
 
-optimized_model = grid_search.best_estimator_
-y_pred_optimized = optimized_model.predict(X_test)
+# Train a Random Forest model
+rf_model = RandomForestClassifier(random_state=SEED)
+rf_model.fit(X_train_scaled, y_train)
+y_pred_rf = rf_model.predict(X_test_scaled)
 
-print("Optimized Model Accuracy:", accuracy_score(y_test, y_pred_optimized))
-print("Optimized Classification Report:\n", classification_report(y_test, y_pred_optimized))
+# Evaluate the models
+print("Decision Tree Metrics:")
+print(f"Accuracy: {accuracy_score(y_test, y_pred_tree):.4f}")
+print(f"Precision: {precision_score(y_test, y_pred_tree, average='weighted'):.4f}")
+print(f"Recall: {recall_score(y_test, y_pred_tree, average='weighted'):.4f}")
+print(f"F1 Score: {f1_score(y_test, y_pred_tree, average='weighted'):.4f}")
 
-print_metrics(y_test, y_pred_optimized)
+print("\nRandom Forest Metrics:")
+print(f"Accuracy: {accuracy_score(y_test, y_pred_rf):.4f}")
+print(f"Precision: {precision_score(y_test, y_pred_rf, average='weighted'):.4f}")
+print(f"Recall: {recall_score(y_test, y_pred_rf, average='weighted'):.4f}")
+print(f"F1 Score: {f1_score(y_test, y_pred_rf, average='weighted'):.4f}")
+
+
+# Get class names as strings
+class_names = le.inverse_transform(dt_model.classes_)
+
+# Visualize the Decision Tree
+plt.figure(figsize=(20, 10))
+plot_tree(dt_model, feature_names=X.columns, class_names=class_names, filled=True)
+plt.title("Decision Tree Visualization")
+plt.show()
