@@ -1,131 +1,139 @@
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import LabelEncoder, RobustScaler
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from sklearn.metrics import confusion_matrix
 
 SEED = 42
 
-data_url = 'https://raw.githubusercontent.com/20161609/data_box/refs/heads/main/penguins.csv'
-df = pd.read_csv(data_url)
-df.shape
+# !wget https://raw.githubusercontent.com/devdio/flyai_datasets/main/citrus.csv
 
-df.head()
+citrus_link = 'https://raw.githubusercontent.com/devdio/flyai_datasets/main/citrus.csv'
+citrus = pd.read_csv(citrus_link)
+# citrus = pd.read_csv('citrus.csv')
+citrus.shape
 
-def clean_column_names(col):
-  # Change to lowercase and remove spaces and special characters ('_', '(', ')')
-  col = col.strip()
-  col = col.lower()
-  col = col.replace(' ', '_')
-  col = col.replace('(', '')
-  col = col.replace(')', '')
-  return col
+citrus.head()
 
-df.columns = [clean_column_names(col) for col in df.columns]
-df.head()
-
+df = citrus.copy()
 df.info()
-
-# Handle missing values in numeric columns by filling with mean
-numeric_cols = df.select_dtypes(include=['number']).columns
-for col in numeric_cols:
-    if df[col].isnull().sum() > 0:
-        print(f"Filling missing values in numeric column '{col}' with mean.")
-        df[col].fillna(df[col].mean(), inplace=True)
-
-# Handle missing values in categorical columns by filling with mode
-categorical_cols = df.select_dtypes(include=['object', 'category']).columns
-numerical_cols = df.select_dtypes(include=['number']).columns
-for col in categorical_cols:
-    if df[col].isnull().sum() > 0:
-        print(f"Filling missing values in categorical column '{col}' with mode.")
-        df[col].fillna(df[col].mode()[0], inplace=True)
-
-
-# Convert categorical columns to numerical using Label Encoding
-for col in categorical_cols:
-  print(f"Encoding categorical column '{col}'.")
-
-  le = LabelEncoder()
-  # Convert to string before encoding
-  df[col] = le.fit_transform(df[col].astype(str))
-
-print("Missing values after preprocessing:")
-print(df.isnull().sum())
-
-initial_rows = df.shape[0]
-df.drop_duplicates(inplace=True)
-final_rows = df.shape[0]
-print(f"Removed {initial_rows - final_rows} duplicate rows.")
 
 df.describe().T
 
-cols_num = df[numerical_cols]
-cols_num
+# Count the number of missing (NaN) values in each column of the DataFrame.
+df.isna().sum(axis=0)
 
-cols_num.hist(figsize=(10, 8))
+# Count the total number of duplicate rows in the DataFrame.
+df.duplicated().sum()
+
+# Shuffle the rows of the DataFrame randomly,
+# using the specified seed for reproducibility,
+# and display the first 5 rows of the shuffled DataFrame."
+df = df.sample(frac=1, random_state=SEED)
+df.head()
+
+idx_train = int(len(df) * 0.6)
+idx_val = int(len(df)* 0.8)
+
+idx_train, idx_val
+
+# Split the DataFrame into train, validation, and test sets and display their shapes.
+train = df.iloc[:idx_train, :]
+val = df.iloc[idx_train:idx_val, :]
+test = df.iloc[idx_val:, :]
+
+train.shape, val.shape, test.shape
+
+X_train = train.drop('name', axis=1)
+y_train = train['name']
+
+X_val = val.drop('name', axis=1)
+y_val = val['name']
+
+y_train.value_counts(), y_val.value_counts()
+
+u = X_train.mean()
+std = X_train.std()
+
+u, std
+
+X_train_s = (X_train - u)/std
+X_train_s.head()
+
+X_val_s = (X_val - u)/std
+X_val_s.head()
+
+ss_dic = {'mean':u, 'std':std}
+ss_dic
+
+label_dict = {'grapefruit':0, 'orange':1}
+
+y_train_e = y_train.map(label_dict)
+y_val_e = y_val.map(label_dict)
+
+y_train_e, y_val_e
+
+X_train_s = X_train_s.to_numpy()
+y_train_e = y_train_e.to_numpy()
+
+X_val_s = X_val_s.to_numpy()
+y_val_e = y_val_e.to_numpy()
+
+print(X_train_s.shape, y_train_e.shape)
+print(X_val_s.shape, y_val_e.shape)
+print(type(X_train_s), type(y_train_e))
+print(type(X_val_s), type(y_val_e))
+
+from sklearn.neighbors import KNeighborsClassifier
+
+clf = KNeighborsClassifier(n_neighbors=5)
+clf.fit(X_train_s, y_train_e)
+
+y_pred = clf.predict(X_val_s)
+y_pred
+
+y_val_e
+
+(y_pred == y_val_e).sum()/len(y_val_e)
+
+from sklearn.metrics import accuracy_score
+
+scores = []
+for k in range(3, 30):
+    clf = KNeighborsClassifier(n_neighbors=k)
+    clf.fit(X_train_s, y_train_e)
+    y_pred = clf.predict(X_val_s)
+    acc = accuracy_score(y_val_e, y_pred)
+    scores.append(acc)
+
+plt.plot(scores)
+
+test.head()
+
+X_test = test.drop('name', axis=1)
+y_test = test['name']
+
+X_test_s = (X_test - ss_dic['mean'])/ss_dic['std']
+y_test_e = y_test.map(label_dict)
+
+X_test_s = X_test_s.to_numpy()
+y_test_e = y_test_e.to_numpy()
+
+y_pred = clf.predict(X_test_s)
+
+(y_test_e == y_pred).sum()/len(y_test_e)
+
+from sklearn.metrics import confusion_matrix
+
+cfm = confusion_matrix(y_test_e, y_pred)
+cfm
+
+s = sns.heatmap(cfm, annot=True, cmap='Blues', fmt='d', cbar=False)
+s.set(xlabel='Prediction', ylabel='Actual')
 plt.show()
 
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-axes = axes.flatten()
+from sklearn.metrics import accuracy_score, recall_score, precision_score,f1_score
 
-
-for i, col in enumerate(cols_num.columns):
-  sns.boxplot(y=col, data=cols_num, hue=df['species'], ax=axes[i])
-  axes[i].set_xlabel(None)
-  axes[i].set_ylabel(None)
-  axes[i].set_title(col)
-
-# Separate features (X) and target (y)
-target_col = 'species'  # Assuming 'species' is the target column
-X = df.drop(columns=[target_col])
-y = df[target_col]
-
-
-# sns.heatmap(train.isna())
-
-# Split the dataset into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED)
-
-X_train.shape, y_train.shape, X_test.shape, y_test.shape
-
-scaler = RobustScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
-# Train a Decision Tree model
-dt_model = DecisionTreeClassifier(random_state=SEED)
-dt_model.fit(X_train_scaled, y_train)
-y_pred_tree = dt_model.predict(X_test_scaled)
-
-# Train a Random Forest model
-rf_model = RandomForestClassifier(random_state=SEED)
-rf_model.fit(X_train_scaled, y_train)
-y_pred_rf = rf_model.predict(X_test_scaled)
-
-# Evaluate the models
-print("Decision Tree Metrics:")
-print(f"Accuracy: {accuracy_score(y_test, y_pred_tree):.4f}")
-print(f"Precision: {precision_score(y_test, y_pred_tree, average='weighted'):.4f}")
-print(f"Recall: {recall_score(y_test, y_pred_tree, average='weighted'):.4f}")
-print(f"F1 Score: {f1_score(y_test, y_pred_tree, average='weighted'):.4f}")
-
-print("\nRandom Forest Metrics:")
-print(f"Accuracy: {accuracy_score(y_test, y_pred_rf):.4f}")
-print(f"Precision: {precision_score(y_test, y_pred_rf, average='weighted'):.4f}")
-print(f"Recall: {recall_score(y_test, y_pred_rf, average='weighted'):.4f}")
-print(f"F1 Score: {f1_score(y_test, y_pred_rf, average='weighted'):.4f}")
-
-
-# Get class names as strings
-class_names = le.inverse_transform(dt_model.classes_)
-
-# Visualize the Decision Tree
-plt.figure(figsize=(20, 10))
-plot_tree(dt_model, feature_names=X.columns, class_names=class_names, filled=True)
-plt.title("Decision Tree Visualization")
-plt.show()
+print('accuracy:', accuracy_score(y_test_e, y_pred))
+print('recall:', recall_score(y_test_e, y_pred))
+print('precision:', precision_score(y_test_e, y_pred))
+print('f1 :', f1_score(y_test_e, y_pred))
