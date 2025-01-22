@@ -1,149 +1,181 @@
+!pip install --q ipython-autotime
+%load_ext autotime
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import tensorflow as tf
-from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.utils import to_categorical
+from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, confusion_matrix
+
+from io import BytesIO
+import requests
+
+data_url = 'https://raw.githubusercontent.com/20161609/data_box/main/mnist.npz'
+
+# Download file from Url and load it to memory.
+response = requests.get(data_url)
+if response.status_code == 200:
+    npz_data = BytesIO(response.content)  # Load it to memory
+    df = np.load(npz_data)  # Read file on numpy
+
+    # Check npz file's content
+    print("Keys included in npz:", df.files)
+    print("x_train shape:", df['x_train'].shape)
+    print("y_train shape:", df['y_train'].shape)
+else:
+    print("Failed to download file:", response.status_code)
+
+X_train = df['x_train']
+X_test = df['x_test']
+y_train = df['y_train']
+y_test = df['y_test']
+
+X_train.shape, X_test.shape, y_train.shape, y_test.shape
+
+# np.random.seed(42)
+sample = np.random.randint(60000, size=25)
+sample
+
+fig = plt.figure(figsize=(8, 8))
+for i, idx in enumerate(sample):
+    plt.subplot(5, 5, i+1)
+    plt.imshow(X_train[idx], cmap='gray')
+    plt.axis('off')
+    plt.title(y_train[idx])
+fig.tight_layout()
+plt.show()
+
+sr = pd.Series(y_train).value_counts().sort_index()
+sr
+
+plt.bar(sr.index, sr)
+plt.title('Label Distribution')
+plt.xlabel('Labels')
+plt.ylabel('Frequency')
+plt.show()
+
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import RobustScaler
-from tensorflow import keras
-from keras.utils import to_categorical
 
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
-SEED = 42
-TARGET = 'species'
+print(X_train.shape, X_val.shape)
+print(y_train.shape, y_val.shape)
 
-url_iris = 'https://raw.githubusercontent.com/20161609/data_box/refs/heads/main/iris.csv'
-df = pd.read_csv(url_iris)
-df.shape
+## 3.학습용, 검증용 데이터 분리
 
-print('Before:',list(df.columns))
+X_train_s = X_train / 255.
+X_val_s = X_val / 255.
 
-col_dict = {col: col.lower().replace(' ', '_' ) for col in df.columns}
-df.rename(columns=col_dict, inplace=True)
+y_train_o = to_categorical(y_train)
+y_val_o = to_categorical(y_val)
 
-print('After:',list(df.columns))
+y_train_o.shape, y_val_o.shape
 
-# Handle missing values in numeric columns by filling with mean
-numeric_cols = df.select_dtypes(include=['number']).columns
-for col in numeric_cols:
-    if df[col].isnull().sum() > 0:
-        print(f"Filling missing values in numeric column '{col}' with mean.")
-        df[col].fillna(df[col].mean(), inplace=True)
+X_train_s = X_train_s.reshape(-1, 28*28)
+X_val_s = X_val_s.reshape(-1, 28*28)
 
-# Handle missing values in categorical columns by filling with mode
-categorical_cols = df.select_dtypes(include=['object', 'category']).columns
-for col in categorical_cols:
-    if df[col].isnull().sum() > 0:
-        print(f"Filling missing values in categorical column '{col}' with mode.")
-        df[col].fillna(df[col].mode()[0], inplace=True)
+X_train_s.shape, X_val_s.shape
 
-# Convert categorical columns to numerical using Label Encoding
-for col in categorical_cols:
-  print(f"Encoding categorical column '{col}'.")
-
-  le = LabelEncoder()
-  # Convert to string before encoding
-  df[col] = le.fit_transform(df[col].astype(str))
-
-print("Missing values after preprocessing:")
-print(df.isnull().sum())
-
-initial_rows = df.shape[0]
-df.drop_duplicates(inplace=True)
-final_rows = df.shape[0]
-print(f"Removed {initial_rows - final_rows} duplicate rows.")
-
-train, test = train_test_split(df, test_size=0.3, random_state=SEED, stratify=df[TARGET])
-
-train.shape, test.shape
-
-X_train = train.drop(TARGET, axis=1)
-y_train = train[TARGET]
-X_test = test.drop(TARGET, axis=1)
-y_test = test[TARGET]
-
-X_train.shape, y_train.shape, X_test.shape, y_test.shape
-
-rs = RobustScaler()
-X_train_s = rs.fit_transform(X_train)
-X_test_s = rs.transform(test.drop(TARGET, axis=1))
-
-X_train_s.shape
-
-y_train = to_categorical(y_train, num_classes=3)
-
-from keras import layers
-
-input_shape = X_train_s.shape[1:]
-
-model = keras.Sequential([
-    layers.Dense(16, activation='relu', input_shape=input_shape),
-    layers.Dense(8, activation='relu'),
-    layers.Dense(3, activation='softmax')
-    # eng -> Sigmoid when you executes the multi-classification
+# Define a neural network model
+model = Sequential([
+    layers.Dense(64, activation='relu', input_shape=(784,)),  # First hidden layer
+    layers.Dense(32, activation='relu'),                     # Second hidden layer
+    layers.Dense(16, activation='relu'),                     # Third hidden layer
+    layers.Dense(10, activation='softmax'),                  # Output layer for 10 classes
 ])
 
+# Display the model summary
 model.summary()
 
+# Compile the model with Adam optimizer
+adam = tf.keras.optimizers.Adam(learning_rate=0.01)
 model.compile(
-    loss='categorical_crossentropy',
-    optimizer='adam',
-    metrics=['accuracy']
+    loss='categorical_crossentropy',  # Loss function for multi-class classification
+    optimizer=adam,
+    metrics=['accuracy']             # Metric to monitor during training
 )
 
-EPOCH = 100
-BATCH_SIZE = 16
+# Set training parameters
+EPOCHS = 30
+BATCH_SIZE = 32
+
+# Train the model with training data and validate on validation data
 history = model.fit(
-    X_train_s, y_train,
-    epochs=EPOCH,
+    X_train_s, y_train_o,
+    epochs=EPOCHS,
     batch_size=BATCH_SIZE,
-    validation_split=0.2
+    validation_data=(X_val_s, y_val_o)
 )
 
+# Function to plot training history
 def plot_history(history):
-  hist = pd.DataFrame(history.history)
-  hist['epoch'] = history.epoch
+    hist = pd.DataFrame(history.history)
+    hist['epoch'] = history.epoch
 
-  plt.figure(figsize=(16, 8))
-  plt.subplot(1, 2, 1)
-  plt.xlabel('epochs')
-  plt.ylabel('loss')
-  plt.plot(hist['epoch'], hist['loss'], label='train loss')
-  plt.plot(hist['epoch'], hist['val_loss'], label='val loss')
-  plt.title('Loss Curve')
-  plt.legend()
+    plt.figure(figsize=(16, 8))
 
-  plt.subplot(1, 2, 2)
-  plt.xlabel('epochs')
-  plt.ylabel('accuracy')
-  plt.plot(hist['epoch'], hist['accuracy'], label='train accuracy')
-  plt.plot(hist['epoch'], hist['val_accuracy'], label='val accuracy')
-  plt.title('Accuracy Curve')
-  plt.legend()
-  plt.show()
+    # Plot loss curve
+    plt.subplot(1, 2, 1)
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.plot(hist['epoch'], hist['loss'], label='Train Loss')
+    plt.plot(hist['epoch'], hist['val_loss'], label='Validation Loss')
+    plt.title('Loss Curve')
+    plt.legend()
 
+    # Plot accuracy curve
+    plt.subplot(1, 2, 2)
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.plot(hist['epoch'], hist['accuracy'], label='Train Accuracy')
+    plt.plot(hist['epoch'], hist['val_accuracy'], label='Validation Accuracy')
+    plt.title('Accuracy Curve')
+    plt.legend()
+
+    plt.show()
+
+# Plot training history
 plot_history(history)
 
+X_test_s = X_test / 255.
+X_test_s = X_test_s.reshape(-1, 28*28)  # Flatten images
+y_test_o = to_categorical(y_test)       # One-hot encode test labels
+
+X_test_s.shape, y_test_o.shape
+
+# Make predictions on test data
 y_pred = model.predict(X_test_s)
-y_pred.shape
 
-import numpy as np
-
+# Convert predictions from probabilities to class labels
 y_pred = np.argmax(y_pred, axis=1)
-y_pred
 
-from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score
-from sklearn.metrics import confusion_matrix
+def print_metrics(y_true, y_pred, aver='binary'):
+    print('Accuracy:', accuracy_score(y_true, y_pred))
+    print('Recall:', recall_score(y_true, y_pred, average=aver))
+    print('Precision:', precision_score(y_true, y_pred, average=aver))
+    print('F1 Score:', f1_score(y_true, y_pred, average=aver))
 
-def print_metrics(y_true, y_pred, ave='binary'):
-  print('accuracy:', accuracy_score(y_test, y_pred))
-  print('recall:', recall_score(y_test, y_pred, average=ave))
-  print('precision:', precision_score(y_test, y_pred, average=ave))
-  print('f1 :', f1_score(y_test, y_pred, average=ave))
+    # Plot confusion matrix
+    cfm = confusion_matrix(y_true, y_pred)
+    sns.heatmap(cfm, annot=True, cmap='Blues', fmt='d', cbar=False)
+    plt.xlabel('Predicted Labels')
+    plt.ylabel('True Labels')
+    plt.title('Confusion Matrix')
+    plt.show()
 
-  clm = confusion_matrix(y_test, y_pred)
-  s = sns.heatmap(clm, annot=True, cmap='Blues', fmt='d', cbar=False)
-  s.set(xlabel='Predicted', ylabel='Actual')
+print_metrics(y_test, y_pred, aver='macro')
 
-print_metrics(y_test, y_pred, ave='macro')
+sample = np.random.randint(10000, size=25)
+
+fig = plt.figure(figsize=(8, 8))
+for i, idx in enumerate(sample):
+    plt.subplot(5, 5, i+1)
+    plt.imshow(X_test[idx], cmap='gray')  # Display grayscale image
+    plt.axis('off')
+    plt.title(f'Pred: {y_pred[idx]} (True: {y_test[idx]})')  # Show predicted and true labels
+fig.tight_layout()
+plt.show()
