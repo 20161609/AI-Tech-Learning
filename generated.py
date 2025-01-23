@@ -8,14 +8,11 @@ import seaborn as sns
 
 import tensorflow as tf
 import keras
-from keras import layers
-
+import os
 import requests
 import zipfile
 import io
 import PIL
-import os
-
 
 # Data URL
 data_url = 'https://raw.githubusercontent.com/20161609/data_box/main/cats_and_dogs.zip'
@@ -52,8 +49,6 @@ for fname in train_dogs_fnames:
     X_train.append(arr)
     y_train.append(1)
 
-len(X_train), len(y_train)
-
 X_train = np.array(X_train)
 y_train = np.array(y_train)
 
@@ -86,33 +81,28 @@ X_val_s = X_val.astype('float')/255.
 
 X_train_s.shape, X_val_s.shape
 
+from keras.applications import VGG16
+
+base_model = VGG16(
+    input_shape=(224, 224, 3),
+    include_top=False,
+    weights="imagenet"
+)
+
+base_model.trainable = False
+base_model.summary()
+
 from keras import layers
 
-model = keras.Sequential([
-    layers.Conv2D(filters=16, kernel_size=3, activation='relu',
-                  input_shape=(224, 224, 3)),
-    layers.MaxPooling2D(),
-    layers.Dropout(0.2),
-    layers.Conv2D(filters=32, kernel_size=3, activation='relu'),
-    layers.MaxPooling2D(),
-    layers.Flatten(),
-    layers.Dense(128, activation='relu'),
-    layers.Dropout(0.2),
-    layers.Dense(1, activation='sigmoid')
-])
-
 model = keras.Sequential()
-model.add(layers.Conv2D(filters=16, kernel_size=3, activation='relu',
-                  input_shape=(224, 224, 3)))
-model.add(layers.MaxPooling2D())
-model.add(layers.Conv2D(filters=32, kernel_size=3, activation='relu'))
-model.add(layers.MaxPooling2D())
-model.add(layers.Conv2D(filters=64, kernel_size=3, activation='relu'))
-model.add(layers.MaxPooling2D())
+model.add(base_model)
 model.add(layers.Flatten())
+model.add(layers.Dense(1024, activation='relu'))
+model.add(layers.Dropout(0.3))
+model.add(layers.Dense(512, activation='relu'))
+model.add(layers.Dropout(0.3))
 model.add(layers.Dense(256, activation='relu'))
-model.add(layers.Dropout(0.2))
-model.add(layers.Dense(16, activation='relu'))
+model.add(layers.Dropout(0.3))
 model.add(layers.Dense(1, activation='sigmoid'))
 
 model.summary()
@@ -123,24 +113,12 @@ model.compile(
     metrics=['accuracy']
 )
 
-from keras import callbacks
-
-es = callbacks.EarlyStopping(monitor="val_loss",patience=5)
-ckpt_path = './temp/cats_dogs.weights.h5'
-ckpt = keras.callbacks.ModelCheckpoint(
-    ckpt_path,
-    monitor="val_loss",
-    save_best_only=True,
-    save_weights_only=True
-)
-
-EPOCHS = 20
+EPOCHS = 10
 BATCH_SIZE = 32
 
 history = model.fit(X_train_s, y_train,
                     epochs=EPOCHS,
                     batch_size=BATCH_SIZE,
-                    callbacks=[es, ckpt],
                     validation_data=(X_val_s, y_val))
 
 def plot_history(history):
@@ -166,8 +144,6 @@ def plot_history(history):
     plt.show()
 
 plot_history(history)
-
-model.load_weights(ckpt_path)
 
 # Data preprocessing
 test_cats_fnames = os.listdir(test_dir + '/cats')
@@ -217,4 +193,4 @@ def print_metrics(y_true, y_pred, aver='binary'):
     s.set(xlabel='Prediction', ylabel='Actual')
     plt.show()
 
-print_metrics(y_test, y_pred, aver='macro')
+print_metrics(y_test, y_pred)
