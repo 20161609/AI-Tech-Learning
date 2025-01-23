@@ -8,6 +8,7 @@ import seaborn as sns
 
 import tensorflow as tf
 import keras
+from keras import layers
 import os
 import requests
 import zipfile
@@ -81,29 +82,33 @@ X_val_s = X_val.astype('float')/255.
 
 X_train_s.shape, X_val_s.shape
 
-from keras.applications import VGG16
-
-base_model = VGG16(
-    input_shape=(224, 224, 3),
-    include_top=False,
-    weights="imagenet"
+# 데이터 증강 레이어 구성
+data_augmentation = keras.Sequential(
+    [
+        keras.layers.RandomFlip("horizontal"),
+        keras.layers.RandomRotation(0.2),
+    ],
+    name='augmentation'
 )
 
-base_model.trainable = False
-base_model.summary()
-
-from keras import layers
-
-model = keras.Sequential()
-model.add(base_model)
-model.add(layers.Flatten())
-model.add(layers.Dense(1024, activation='relu'))
-model.add(layers.Dropout(0.3))
-model.add(layers.Dense(512, activation='relu'))
-model.add(layers.Dropout(0.3))
-model.add(layers.Dense(256, activation='relu'))
-model.add(layers.Dropout(0.3))
-model.add(layers.Dense(1, activation='sigmoid'))
+# 모델 구성
+model = keras.Sequential([
+    keras.layers.Input(shape=(224, 224, 3)),  # 명시적으로 입력 크기 정의
+    data_augmentation,  # 데이터 증강 레이어 추가
+    keras.layers.Rescaling(1./255),  # 정규화
+    keras.layers.Conv2D(32, (3, 3), activation='relu'),
+    keras.layers.MaxPooling2D((2, 2)),
+    keras.layers.Conv2D(64, (3, 3), activation='relu'),
+    keras.layers.MaxPooling2D((2, 2)),
+    keras.layers.Conv2D(128, (3, 3), activation='relu'),
+    keras.layers.MaxPooling2D((2, 2)),
+    keras.layers.Conv2D(128, (3, 3), activation='relu'),
+    keras.layers.MaxPooling2D((2, 2)),
+    keras.layers.Flatten(),
+    keras.layers.Dense(512, activation='relu'),
+    keras.layers.Dropout(0.3),
+    keras.layers.Dense(1, activation='sigmoid')
+])
 
 model.summary()
 
