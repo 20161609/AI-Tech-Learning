@@ -26,7 +26,7 @@ def extract_code_from_ipynb(file_path, output_file):
     print(f"Code extracted to {output_file}")
 
 # Define the input .ipynb file path and the output .py file path
-FILE_PATH = '16_cnn_multi_fashionmnist.ipynb'  # Path to the Jupyter Notebook
+FILE_PATH = '17_cnn_bin_cats_dogs.ipynb'  # Path to the Jupyter Notebook
 OUTPUT_PATH = 'generated.py'  # Path for the generated Python file
 
 # Call the function to extract code
