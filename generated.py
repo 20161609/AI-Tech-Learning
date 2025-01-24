@@ -1,223 +1,109 @@
-# Install necessary libraries and enable automatic timing for cells
 !pip install --q ipython-autotime
 %load_ext autotime
 
-# Importing required libraries
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-
 import tensorflow as tf
-import keras
 
-# Load the Samsung stock dataset
-samsung = pd.read_csv('/content/005930.KS.csv')
-print(samsung.shape)  # Check the dataset dimensions
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout
+from tensorflow.keras.utils import to_categorical
 
-# Create a copy of the dataset for processing
-df = samsung.copy()
-df.head()  # Display the first few rows of the dataset
+from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
 
-# Clean column names by replacing spaces with underscores and converting to lowercase
-df.columns = [col.replace(' ', '_').lower() for col in df.columns]
-df.head()  # Display cleaned column names
+### 데이터셋 확장
 
-# Check data information and types
-df.info()
+corpus = [
+    'This is the first document.',
+    'This document is the second document.',
+    'And this is the third one.',
+    'Is this the first document?',
+    'This is a completely new document.',
+    'A document is a piece of information.',
+    'Is this your first document?',
+    'Every document has its own purpose.',
+    'The fourth document is quite different.',
+    'Here is another unique document.',
+    'Do you find this document useful?',
+    'Documents can store valuable information.',
+    'This is yet another example document.',
+    'Some documents are very informative.',
+    'Each document serves a specific purpose.',
+]
 
-# Display dataset summary statistics
-df.describe().T
+labels = [0, 1, 2, 0, 1, 2, 0, 1, 2, 1, 0, 2, 1, 0, 2]  # 문장 카테고리
 
-# Check for rows with volume equal to 0
-df[df['volume'] == 0]
+# 2. Tokenizer로 텍스트 토큰화
+vocab_size = 200
+tokenizer = Tokenizer(num_words=vocab_size, oov_token="<OOV>")
+tokenizer.fit_on_texts(corpus)
+sequences = tokenizer.texts_to_sequences(corpus)
 
-# Replace volume equal to 0 with NaN and check missing values
-df.loc[df['volume'] == 0, 'volume'] = np.nan
-df.isna().sum()
 
-# Drop rows with missing values
-df = df.dropna()
-df.isna().sum()  # Ensure no missing values remain
+X_train, X_val, y_train, y_val = train_test_split(padded, labels_categorical, test_size=0.2, random_state=42)
 
-# Convert 'date' column to datetime format
-df['date'] = pd.to_datetime(df['date'])
-df.info()  # Verify the column type
+# 패딩
+maxlen = 12
+padded = pad_sequences(sequences, maxlen=maxlen, padding='post', truncating='post')
 
-# Set the 'date' column as the DataFrame index
-df = df.set_index('date')
-df.head()
 
-# Plot closing prices and adjusted closing prices
-plt.figure(figsize=(10, 5))
-plt.plot(df.index, df['close'], label='close')
-plt.plot(df.index, df['adj_close'], label='adj_close')
-plt.legend()
-plt.show()
+# 3. 라벨을 원-핫 인코딩
+num_classes = len(set(labels))  # 클래스 개수
+labels_categorical = to_categorical(labels, num_classes=num_classes)
 
-# Add moving averages (MA3 and MA5) columns
-df['ma3'] = np.around(df['close'].rolling(window=3).mean(), 0)
-df['ma5'] = np.around(df['close'].rolling(window=5).mean(), 0)
-df.head()
 
-# Calculate the mid-price between 'low' and 'high'
-df['mid'] = (df['low'] + df['high']) / 2
-df.head()
+# 4. 모델 정의
+embedding_dim = 32  # 임베딩 벡터 크기
 
-# Drop rows with missing values after adding new columns
-df = df.dropna()
-df.isna().sum()  # Verify no missing values remain
 
-# Split the dataset into training (80%) and testing (20%) sets
-idx = int(df.shape[0] * 0.8)
-train = df.iloc[:idx, :]
-test = df.iloc[idx:, :]
-print(train.shape, test.shape)  # Check dimensions of the splits
+model = Sequential([
+    Embedding(input_dim=vocab_size, output_dim=embedding_dim, input_length=maxlen),
+    LSTM(64, return_sequences=False),
+    Dropout(0.5),
+    Dense(32, activation='relu'),
+    Dropout(0.5),
+    Dense(num_classes, activation='softmax')
+])
 
-# Prepare training data for the model
-X_train = train.drop(['close', 'adj_close'], axis=1)
-y_train = train['close']
-print(X_train.shape, y_train.shape)
-
-# Normalize features using MinMaxScaler
-from sklearn.preprocessing import MinMaxScaler
-ms = MinMaxScaler()
-X_train_s = ms.fit_transform(X_train)
-y_train = y_train.to_numpy()  # Convert target to NumPy array
-
-# Create sequences for time series forecasting
-def make_sequence_dataset(X, y, window_size):
-    feature_list = []
-    label_list = []
-
-    for i in range(len(X) - window_size):
-        feature_list.append(X[i:i+window_size])
-        label_list.append(y[i+window_size])
-
-    return np.array(feature_list), np.array(label_list)
-
-# Generate sequences for training data
-X_train_w, y_train_w = make_sequence_dataset(X_train_s, y_train, 20)
-print(X_train_w.shape, y_train_w.shape)
-
-# Build an LSTM model
-from keras import layers
-model = keras.Sequential()
-model.add(layers.LSTM(32, activation='relu', input_shape=(20, 7)))
-model.add(layers.Dense(16, activation='relu'))
-model.add(layers.Dense(1))
-
-# Display model summary
 model.summary()
 
-# Compile the model
-model.compile(
-    loss='mse',
-    optimizer='adam',
-    metrics=['mse', 'mae']
-)
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-# Train the model
-EPOCHS = 20
-BATCH_SIZE = 16
-history = model.fit(
-    X_train_w, y_train_w,
-    epochs=EPOCHS,
-    batch_size=BATCH_SIZE,
-    validation_split=0.2
-)
 
-# Function to plot training history
-def plot_history(history):
-    hist = pd.DataFrame(history.history)
-    hist['epoch'] = history.epoch
+# 5. 모델 학습
 
-    plt.figure(figsize=(16, 8))
+# 데이터 분리
 
-    # Plot loss curve
-    plt.subplot(1, 2, 1)
-    plt.xlabel('epochs')
-    plt.ylabel('loss')
-    plt.plot(hist['epoch'], hist['loss'], label='train loss')
-    plt.plot(hist['epoch'], hist['val_loss'], label='val loss')
-    plt.title('Loss Curve')
-    plt.legend()
+# 모델 학습
+model.fit(X_train, y_train, epochs=30, batch_size=8, validation_data=(X_val, y_val), verbose=1)
 
-    # Plot mean squared error (MSE) curve
-    plt.subplot(1, 2, 2)
-    plt.xlabel('epochs')
-    plt.ylabel('MSE')
-    plt.plot(hist['epoch'], hist['mse'], label='train mse')
-    plt.plot(hist['epoch'], hist['val_mse'], label='val mse')
-    plt.title('MSE Curve')
-    plt.legend()
+class_weights = compute_class_weight('balanced', classes=np.unique(labels), y=labels)
+class_weights = dict(enumerate(class_weights))
 
-    plt.show()
+# 모델 학습 시 클래스 가중치 적용
+model.fit(X_train, y_train, epochs=30, batch_size=8, validation_data=(X_val, y_val), class_weight=class_weights, verbose=1)
 
-# Plot the training history
-plot_history(history)
+# model.fit(padded, labels_categorical, epochs=50, verbose=1, batch_size=8)
 
-# Prepare testing data
-X_test = test.drop(['close', 'adj_close'], axis=1)
-y_test = test['close']
 
-X_test_s = ms.transform(X_test)
-y_test = y_test.to_numpy()
+# 6. 새로운 문장 예측
+new_sentences = [
+    'This is a new document.',
+    'Is this the second one?',
+    'This document is completely new.',
+    'Every document has its value.',
+    'This is the fourth document and it is unique.',
+    'Do you think this document is valuable?',
+    'Some documents hold critical information.'
+]
+new_sequences = tokenizer.texts_to_sequences(new_sentences)
+new_padded = pad_sequences(new_sequences, maxlen=maxlen, padding='post', truncating='post')
 
-# Generate sequences for testing data
-X_test_w, y_test_w = make_sequence_dataset(X_test_s, y_test, 20)
+predictions = model.predict(new_padded)
 
-# Make predictions on testing data
-y_pred = model.predict(X_test_w)
-
-# Plot true vs predicted values
-plt.figure(figsize=(10, 5))
-plt.plot(y_test_w, label='true')
-plt.plot(y_pred.flatten(), label='pred')
-plt.legend()
-plt.show()
-
-# Multi-input LSTM model for further experimentation
-# First input branch
-input1 = layers.Input(shape=(20, 7))
-x = layers.LSTM(64, activation='relu')(input1)
-x = layers.Dense(32, activation='relu')(x)
-x = layers.Dense(132, activation='relu')(x)
-output1 = layers.Dense(32, activation='relu')(x)
-
-# Second input branch
-input2 = layers.Input(shape=(20, 7))
-x = layers.LSTM(64, activation='relu')(input2)
-output2 = layers.Dense(32, activation='relu')(x)
-
-# Merge outputs from both branches
-merge = layers.Concatenate()([output1, output2])
-output3 = layers.Dense(1)(merge)
-
-# Define the final multi-input model
-model = keras.Model(inputs=[input1, input2], outputs=output3)
-model.summary()
-
-# Visualize the model architecture
-keras.utils.plot_model(model)
-
-# Compile the multi-input model
-model.compile(loss='mse', optimizer='adam', metrics=['mse'])
-
-# Train the multi-input model
-model.fit(
-    [X_train_w, X_train_w], y_train_w,
-    epochs=EPOCHS,
-    batch_size=BATCH_SIZE,
-    validation_split=0.2
-)
-
-# Make predictions with the multi-input model
-y_pred = model.predict([X_test_w, X_test_w])
-
-# Plot true vs predicted values for the multi-input model
-plt.figure(figsize=(10, 5))
-plt.plot(y_test_w, label='true')
-plt.plot(y_pred.flatten(), label='pred')
-plt.legend()
-plt.show()
+for i, sentence in enumerate(new_sentences):
+    print(f"문장: '{sentence}' -> 예측된 카테고리: {np.argmax(predictions[i])}")
